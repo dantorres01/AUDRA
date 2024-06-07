@@ -1,0 +1,189 @@
+#define BLYNK_TEMPLATE_ID "TMPL2LR6_I4_c"
+#define BLYNK_TEMPLATE_NAME "AUDRA"
+
+#define BLYNK_FIRMWARE_VERSION        "0.1.0"
+#define BLYNK_PRINT Serial
+
+#define APP_DEBUG
+
+#include "BlynkEdgent.h"
+#include <LiquidCrystal.h>
+#include <DHT.h>
+#include <Adafruit_Sensor.h>
+#include <Adafruit_BME280.h>
+
+// PANTALLA LCD
+LiquidCrystal lcd(26, 25, 27, 14, 12, 13); // RS, EN, D4, D5, D6, D7
+
+int A = 1;
+
+#define Boton1 4
+#define Boton2 2
+#define Boton3 15
+
+// SENSOR DE HUMEDAD Y TEMPERATURA
+#define DHTPIN 5
+#define DHTTYPE DHT11 
+DHT dht(DHTPIN, DHTTYPE);
+
+// SENSOR DE CALIDAD DEL AIRE
+#define MQ2PIN 35
+
+// SENSOR DE PRESION
+Adafruit_BME280 bme;
+
+void setup() {
+  Serial.begin(115200);
+  delay(100);
+
+  BlynkEdgent.begin();
+  pinMode(Boton1, INPUT_PULLUP);
+  pinMode(Boton2, INPUT_PULLUP);
+  pinMode(Boton3, INPUT_PULLUP);
+  
+  lcd.begin(16, 2);
+  dht.begin();
+  bme.begin(0x76); // Dirección I2C del BME280 (0x76 o 0x77)
+  Serial.begin(9600);
+}
+
+void loop() {
+  BlynkEdgent.run();
+  if (digitalRead(Boton1) == LOW) {
+    A++;
+    if (A > 5) {
+      A = 1;
+    }
+    delay(500);
+  }
+  
+  if (digitalRead(Boton2) == LOW) {
+    A--;
+    if (A < 1) {
+      A = 5;
+    }
+    delay(500);
+  }
+
+  if (digitalRead(Boton3) == LOW) {
+    A = 2;
+    delay(500);
+  }
+  
+  switch (A) {
+    case 1:
+      mostrarInstrucciones();
+      break;
+    case 2:
+      TemperaturayHumedad();
+      break;
+    case 3:
+      CalidadDelAire();
+      break;
+    case 4:
+      sensorDePresion();
+      break;
+    case 5:
+      HumedadDelSuelo();
+      break;
+  }
+}
+
+void mostrarInstrucciones() {
+  lcd.clear();
+  lcd.print("Boton Izquierda");
+  lcd.setCursor(0, 1);
+  lcd.print("Boton Derecha");
+  delay(100);
+}
+
+void TemperaturayHumedad() {
+  lcd.clear();
+
+  float h = dht.readHumidity();
+  float t = dht.readTemperature();
+
+  if (isnan(h) || isnan(t)) {
+    lcd.setCursor(0, 1);
+    lcd.print("Error leyendo DHT");
+    return;
+  }
+  
+  lcd.print("Tempt:");
+  lcd.print(t);
+  lcd.print("C");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Humed:");
+  lcd.print(h);
+  lcd.print("%");
+
+  Blynk.virtualWrite(V1, t); // Enviar temperatura a Blynk
+  Blynk.virtualWrite(V2, h); // Enviar humedad a Blynk
+
+  delay(100);
+}
+
+void CalidadDelAire() {
+  lcd.clear();
+  
+  int mq2Value = analogRead(MQ2PIN);
+  String airQuality;
+
+  if (mq2Value < 100) {
+    airQuality = "Muy buena";
+  } else if (mq2Value < 200) {
+    airQuality = "Buena";
+  } else if (mq2Value < 300) {
+    airQuality = "Mala";
+  } else {
+    airQuality = "PELIGRO";
+  }
+
+  lcd.print("Calidad Aire:");
+  lcd.setCursor(0, 1);
+  lcd.print(airQuality);
+
+  Blynk.virtualWrite(V3, airQuality); // Enviar calidad del aire a Blynk
+
+  delay(100);
+}
+
+void sensorDePresion() {
+ void sensorDePresion() {
+  // Función para mostrar la presión atmosférica en la pantalla LCD y enviar los datos a Blynk
+  float pressure = bme.readPressure();
+  float temperature = bme.readTemperature();
+  float humidity = bme.readHumidity();
+
+  lcd.clear();
+  lcd.print("Presion:");
+  lcd.print(pressure / 100.0); // Convert Pa to hPa
+  lcd.print(" hPa");
+
+  lcd.setCursor(0, 1);
+  lcd.print("Temp:");
+  lcd.print(temperature);
+  lcd.print(" C");
+
+  Blynk.virtualWrite(V4, pressure / 100.0); // Enviar presión a Blynk
+  Blynk.virtualWrite(V5, temperature); // Enviar temperatura del sensor de presión a Blynk
+
+  delay(100);
+}
+
+void HumedadDelSuelo() {
+  lcd.clear();
+  
+  int soilMoistureValue = analogRead(SOIL_MOISTURE_PIN);
+  float soilMoisturePercent = map(soilMoistureValue, 0, 4095, 0, 100); // Convertir a porcentaje
+
+  lcd.print("Humedad Suelo:");
+  lcd.setCursor(0, 1);
+  lcd.print(soilMoisturePercent);
+  lcd.print("%");
+
+  Blynk.virtualWrite(V6, soilMoisturePercent); // Enviar humedad del suelo a Blynk
+
+  delay(100);
+}
