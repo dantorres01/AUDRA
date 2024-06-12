@@ -1,19 +1,13 @@
-#define BLYNK_TEMPLATE_ID "TMPL2LR6_I4_c"
-#define BLYNK_TEMPLATE_NAME "AUDRA"
+// AUDRA ESP32 CODE v1.0
 
-#define BLYNK_FIRMWARE_VERSION        "0.1.0"
-#define BLYNK_PRINT Serial
-
-#define APP_DEBUG
-
-#include "BlynkEdgent.h"
 #include <LiquidCrystal.h>
 #include <DHT.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
+#include <Wire.h>
 
 // PANTALLA LCD
-LiquidCrystal lcd(26, 25, 27, 14, 12, 13); // RS, EN, D4, D5, D6, D7
+LiquidCrystal lcd (26, 25, 27, 14, 12, 13); // RS, EN, D4, D5, D6, D7
 
 int A = 1;
 
@@ -23,7 +17,7 @@ int A = 1;
 
 // SENSOR DE HUMEDAD Y TEMPERATURA
 #define DHTPIN 5
-#define DHTTYPE DHT11 
+#define DHTTYPE DHT22
 DHT dht(DHTPIN, DHTTYPE);
 
 // SENSOR DE CALIDAD DEL AIRE
@@ -33,10 +27,6 @@ DHT dht(DHTPIN, DHTTYPE);
 Adafruit_BME280 bme;
 
 void setup() {
-  Serial.begin(115200);
-  delay(100);
-
-  BlynkEdgent.begin();
   pinMode(Boton1, INPUT_PULLUP);
   pinMode(Boton2, INPUT_PULLUP);
   pinMode(Boton3, INPUT_PULLUP);
@@ -48,7 +38,6 @@ void setup() {
 }
 
 void loop() {
-  BlynkEdgent.run();
   if (digitalRead(Boton1) == LOW) {
     A++;
     if (A > 5) {
@@ -118,9 +107,6 @@ void TemperaturayHumedad() {
   lcd.print(h);
   lcd.print("%");
 
-  Blynk.virtualWrite(V1, t); // Enviar temperatura a Blynk
-  Blynk.virtualWrite(V2, h); // Enviar humedad a Blynk
-
   delay(100);
 }
 
@@ -144,19 +130,16 @@ void CalidadDelAire() {
   lcd.setCursor(0, 1);
   lcd.print(airQuality);
 
-  Blynk.virtualWrite(V3, airQuality); // Enviar calidad del aire a Blynk
-
   delay(100);
 }
 
 void sensorDePresion() {
- void sensorDePresion() {
-  // Función para mostrar la presión atmosférica en la pantalla LCD y enviar los datos a Blynk
+  lcd.clear();
+
   float pressure = bme.readPressure();
   float temperature = bme.readTemperature();
   float humidity = bme.readHumidity();
 
-  lcd.clear();
   lcd.print("Presion:");
   lcd.print(pressure / 100.0); // Convert Pa to hPa
   lcd.print(" hPa");
@@ -166,24 +149,9 @@ void sensorDePresion() {
   lcd.print(temperature);
   lcd.print(" C");
 
-  Blynk.virtualWrite(V4, pressure / 100.0); // Enviar presión a Blynk
-  Blynk.virtualWrite(V5, temperature); // Enviar temperatura del sensor de presión a Blynk
-
   delay(100);
 }
 
 void HumedadDelSuelo() {
-  lcd.clear();
-  
-  int soilMoistureValue = analogRead(SOIL_MOISTURE_PIN);
-  float soilMoisturePercent = map(soilMoistureValue, 0, 4095, 0, 100); // Convertir a porcentaje
-
-  lcd.print("Humedad Suelo:");
-  lcd.setCursor(0, 1);
-  lcd.print(soilMoisturePercent);
-  lcd.print("%");
-
-  Blynk.virtualWrite(V6, soilMoisturePercent); // Enviar humedad del suelo a Blynk
-
-  delay(100);
+  // Implementar función para humedad del suelo
 }
