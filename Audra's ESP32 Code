@@ -1,157 +1,169 @@
-// AUDRA ESP32 CODE v1.0
+// ESP32 AUDRA CODE
 
-#include <LiquidCrystal.h>
-#include <DHT.h>
+#define BLYNK_TEMPLATE_ID "TMPL2LR6_I4_c"
+#define BLYNK_TEMPLATE_NAME "AUDRA"
+#define BLYNK_FIRMWARE_VERSION "0.1.0"
+#define BLYNK_PRINT Serial
+
+#include "BlynkEdgent.h"
+#include <Wire.h>
 #include <Adafruit_Sensor.h>
 #include <Adafruit_BME280.h>
-#include <Wire.h>
+#include <DHT.h>
 
-// PANTALLA LCD
-LiquidCrystal lcd (26, 25, 27, 14, 12, 13); // RS, EN, D4, D5, D6, D7
+// Definir los pines I2C para el BME280
+#define I2C_SDA 21
+#define I2C_SCL 22-
+#define SEALEVELPRESSURE_HPA (1013.25)
 
-int A = 1;
+// Definir el pin para el sensor DHT11
+#define DHT_PIN 23
+#define DHT_TYPE DHT11
+DHT dht(DHT_PIN, DHT_TYPE);
 
-#define Boton1 4
-#define Boton2 2
-#define Boton3 15
-
-// SENSOR DE HUMEDAD Y TEMPERATURA
-#define DHTPIN 5
-#define DHTTYPE DHT22
-DHT dht(DHTPIN, DHTTYPE);
-
-// SENSOR DE CALIDAD DEL AIRE
-#define MQ2PIN 35
-
-// SENSOR DE PRESION
+// Crear una instancia del sensor BME280
 Adafruit_BME280 bme;
 
+// Definir el pin para el sensor MQ-2 (ejemplo usando pin 36)
+#define MQ2_PIN 32
+int gasValue = 0;
+float gasConcentration = 0.0;
+int baseline = 0;
+
+// Definir el pin para el sensor de humedad del suelo (ejemplo usando pin A0)
+#define SOIL_MOISTURE_PIN 33
+int soilMoistureValue = 0;
+float soilMoisturePercent = 0.0;  // Variable para almacenar el porcentaje de humedad del suelo
+
+// Función para escanear el bus I2C
+void scanI2C() {
+  byte error, address;
+  int nDevices;
+
+  Serial.println("Escaneando I2C...");
+  nDevices = 0;
+
+  for (address = 1; address < 127; address++) {
+    Wire.beginTransmission(address);
+    error = Wire.endTransmission();
+
+    if (error == 0) {
+      Serial.print("Dispositivo I2C encontrado en la dirección 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.print(address, HEX);
+      Serial.println(" !");
+
+      nDevices++;
+    } else if (error == 4) {
+      Serial.print("Error desconocido en la dirección 0x");
+      if (address < 16)
+        Serial.print("0");
+      Serial.println(address, HEX);
+    }
+  }
+
+  if (nDevices == 0)
+    Serial.println("No se encontraron dispositivos I2C\n");
+  else
+    Serial.println("Escaneo I2C completado\n");
+}
+
 void setup() {
-  pinMode(Boton1, INPUT_PULLUP);
-  pinMode(Boton2, INPUT_PULLUP);
-  pinMode(Boton3, INPUT_PULLUP);
+  // Inicializa la comunicación serial
+  Serial.begin(115200);
+  delay(100);
+  BlynkEdgent.begin();
   
-  lcd.begin(16, 2);
+  // Inicializa la comunicación I2C con los pines especificados
+  Wire.begin(I2C_SDA, I2C_SCL);
+
+  // Inicializa el sensor DHT11
   dht.begin();
-  bme.begin(0x76); // Dirección I2C del BME280 (0x76 o 0x77)
-  Serial.begin(9600);
+
+  // Inicializa el sensor MQ-2
+  pinMode(MQ2_PIN, INPUT);
+
+  // Ejecuta el escáner I2C
+  scanI2C();
+
+  // Inicializa el sensor BME280
+  if (!bme.begin(0x76)) {
+    Serial.println("No se encontró el sensor BME280 en 0x76. Verifica la conexión.");
+    if (!bme.begin(0x77)) {
+      Serial.println("No se encontró el sensor BME280 en 0x77. Verifica la conexión.");
+      while (1);
+    }
+  }
+
+  // Calibración inicial del MQ-2 (lectura en aire limpio)
+  Serial.println("Calibrando sensor MQ-2...");
+  delay(10000); // Esperar 10 segundos
+  baseline = analogRead(MQ2_PIN);
+  Serial.print("Valor de referencia en aire limpio: ");
+  Serial.println(baseline);
 }
 
 void loop() {
-  if (digitalRead(Boton1) == LOW) {
-    A++;
-    if (A > 5) {
-      A = 1;
-    }
-    delay(500);
-  }
+  // Maneja las tareas de Blynk
+  BlynkEdgent.run();
   
-  if (digitalRead(Boton2) == LOW) {
-    A--;
-    if (A < 1) {
-      A = 5;
-    }
-    delay(500);
-  }
+  // Lee los valores del sensor BME280
+  float temperature_bme = bme.readTemperature();
+  float humidity_bme = bme.readHumidity();
+  float pressure_bme = bme.readPressure() / 100.0F;
 
-  if (digitalRead(Boton3) == LOW) {
-    A = 2;
-    delay(500);
-  }
-  
-  switch (A) {
-    case 1:
-      mostrarInstrucciones();
-      break;
-    case 2:
-      TemperaturayHumedad();
-      break;
-    case 3:
-      CalidadDelAire();
-      break;
-    case 4:
-      sensorDePresion();
-      break;
-    case 5:
-      HumedadDelSuelo();
-      break;
-  }
-}
+  // Lee los valores del sensor DHT11
+  float temperature_dht = dht.readTemperature();
+  float humidity_dht = dht.readHumidity();
 
-void mostrarInstrucciones() {
-  lcd.clear();
-  lcd.print("Boton Izquierda");
-  lcd.setCursor(0, 1);
-  lcd.print("Boton Derecha");
-  delay(100);
-}
+  // Lee el valor del sensor MQ-2
+  gasValue = analogRead(MQ2_PIN);
 
-void TemperaturayHumedad() {
-  lcd.clear();
+  // Lee el valor del sensor de humedad del suelo
+  soilMoistureValue = analogRead(SOIL_MOISTURE_PIN);
 
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+  // Convierte el valor del sensor de humedad del suelo a porcentaje
+  soilMoisturePercent = map(soilMoistureValue, 4095, 1650, 0, 100);
 
-  if (isnan(h) || isnan(t)) {
-    lcd.setCursor(0, 1);
-    lcd.print("Error leyendo DHT");
-    return;
-  }
-  
-  lcd.print("Tempt:");
-  lcd.print(t);
-  lcd.print("C");
+  // Calcula la concentración de gas relativa a la calibración inicial
+  gasConcentration = ((float)gasValue / baseline) * 10.4;
 
-  lcd.setCursor(0, 1);
-  lcd.print("Humed:");
-  lcd.print(h);
-  lcd.print("%");
+  // Imprime los valores en el monitor serial
+  Serial.print("BME280 - Temperatura: ");
+  Serial.print(temperature_bme);
+  Serial.print(" °C, Humedad: ");
+  Serial.print(humidity_bme);
+  Serial.print(" %, Presión: ");
+  Serial.print(pressure_bme);
+  Serial.println(" hPa");
 
-  delay(100);
-}
+  Serial.print("DHT11 - Temperatura: ");
+  Serial.print(temperature_dht);
+  Serial.print(" °C, Humedad: ");
+  Serial.print(humidity_dht);
+  Serial.println(" %");
 
-void CalidadDelAire() {
-  lcd.clear();
-  
-  int mq2Value = analogRead(MQ2PIN);
-  String airQuality;
+  Serial.print("MQ-2 - Valor de gas: ");
+  Serial.print(gasValue);
+  Serial.print(", Concentración de gas: ");
+  Serial.print(gasConcentration);
+  Serial.println(" %");
 
-  if (mq2Value < 100) {
-    airQuality = "Muy buena";
-  } else if (mq2Value < 200) {
-    airQuality = "Buena";
-  } else if (mq2Value < 300) {
-    airQuality = "Mala";
-  } else {
-    airQuality = "PELIGRO";
-  }
+  Serial.print("Humedad del suelo - Valor: ");
+  Serial.print(soilMoistureValue);
+  Serial.print(", Porcentaje: ");
+  Serial.println(soilMoisturePercent);
 
-  lcd.print("Calidad Aire:");
-  lcd.setCursor(0, 1);
-  lcd.print(airQuality);
+  // Envia los valores a Blynk
+  Blynk.virtualWrite(V0, temperature_bme);
+  Blynk.virtualWrite(V1, humidity_bme);
+  Blynk.virtualWrite(V2, pressure_bme);
+  Blynk.virtualWrite(V3, temperature_dht);
+  Blynk.virtualWrite(V4, humidity_dht);
+  Blynk.virtualWrite(V5, gasConcentration);
+  Blynk.virtualWrite(V6, soilMoisturePercent);
 
-  delay(100);
-}
-
-void sensorDePresion() {
-  lcd.clear();
-
-  float pressure = bme.readPressure();
-  float temperature = bme.readTemperature();
-  float humidity = bme.readHumidity();
-
-  lcd.print("Presion:");
-  lcd.print(pressure / 100.0); // Convert Pa to hPa
-  lcd.print(" hPa");
-
-  lcd.setCursor(0, 1);
-  lcd.print("Temp:");
-  lcd.print(temperature);
-  lcd.print(" C");
-
-  delay(100);
-}
-
-void HumedadDelSuelo() {
-  // Implementar función para humedad del suelo
+  // Espera 2 segundos antes de leer los valores nuevamente
+  delay(2000);
 }
